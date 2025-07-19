@@ -378,9 +378,12 @@ def main():
     args = parser.parse_args()
     
     if args.transport == "stdio":
-        mcp.run_stdio()
+        mcp.run()
     else:
-        mcp.run_server("localhost", args.port)
+        # HTTP transport using StreamableHTTP
+        import uvicorn
+        app = mcp.streamable_http_app()
+        uvicorn.run(app, host="0.0.0.0", port=args.port)
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,5 @@
+mcp>=1.0.0
+fastmcp>=0.2.0
+pydantic>=2.0.0
+aiofiles>=23.0.0
+asyncio-subprocess>=0.1.0

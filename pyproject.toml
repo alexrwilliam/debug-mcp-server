@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "debug-mcp"
+version = "0.1.0"
+description = "Debug MCP Server for scraper development workflows"
+authors = [{name = "Alex Williamson"}]
+dependencies = [
+    "mcp>=1.0.0",
+    "fastmcp>=0.2.0", 
+    "pydantic>=2.0.0",
+    "aiofiles>=23.0.0"
+]
+requires-python = ">=3.8"
+
+[project.scripts]
+debug-mcp = "debug_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/debug_mcp"]

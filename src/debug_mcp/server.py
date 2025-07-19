@@ -61,6 +61,18 @@ class SelectorAnalysis(BaseModel):
 active_sessions: Dict[str, DebugSession] = {}
 current_working_directory: Optional[Path] = None
 
+# === Helper Functions ===
+
+def resolve_path(path: str) -> Path:
+    """Resolve path relative to current working directory if set."""
+    global current_working_directory
+    path_obj = Path(path)
+    if path_obj.is_absolute():
+        return path_obj.expanduser().resolve()
+    else:
+        base_dir = current_working_directory or Path.cwd()
+        return (base_dir / path).resolve()
+
 # === MCP Server Setup ===
 mcp = FastMCP("debug-mcp")
 

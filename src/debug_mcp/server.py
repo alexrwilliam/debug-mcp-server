@@ -5,9 +5,11 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -19,12 +21,19 @@ logger = logging.getLogger(__name__)
 
 # === Data Models ===
 
+class ErrorDetail(BaseModel):
+    """Detailed error information."""
+    type: str
+    message: str
+    suggestions: List[str] = Field(default_factory=list)
+
 class FileResult(BaseModel):
     """File operation result."""
     success: bool
     content: Optional[str] = None
-    error: Optional[str] = None
+    error: Optional[Union[str, ErrorDetail]] = None
     lines_read: Optional[int] = None
+    file_info: Optional[Dict[str, Any]] = None
 
 class CommandResult(BaseModel):
     """Command execution result."""
@@ -50,6 +59,7 @@ class SelectorAnalysis(BaseModel):
 
 # === Global State ===
 active_sessions: Dict[str, DebugSession] = {}
+current_working_directory: Optional[Path] = None
 
 # === MCP Server Setup ===
 mcp = FastMCP("debug-mcp")
@@ -157,6 +167,375 @@ async def edit_file(path: str, old_content: str, new_content: str) -> FileResult
     
     except Exception as e:
         return FileResult(success=False, error=str(e))
+
+# === Enhanced File Operations ===
+
+@mcp.tool()
+async def list_directory(path: str = ".", pattern: Optional[str] = None) -> Dict[str, Any]:
+    """List files and directories with detailed information."""
+    try:
+        dir_path = resolve_path(path)
+        
+        if not dir_path.exists():
+            return {
+                "success": False,
+                "error": ErrorDetail(
+                    type="DirectoryNotFoundError",
+                    message=f"Directory not found: {path}",
+                    suggestions=["Check directory path", "Use get_working_directory to see current location"]
+                )
+            }
+        
+        if not dir_path.is_dir():
+            return {
+                "success": False,
+                "error": ErrorDetail(
+                    type="NotADirectoryError",
+                    message=f"Path is not a directory: {path}",
+                    suggestions=["Use a directory path", "Check if path points to a file"]
+                )
+            }
+        
+        items = []
+        for item in dir_path.iterdir():
+            try:
+                stat = item.stat()
+                item_info = {
+                    "name": item.name,
+                    "path": str(item.relative_to(dir_path.parent)),
+                    "type": "directory" if item.is_dir() else "file",
+                    "size": stat.st_size if item.is_file() else None,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "permissions": oct(stat.st_mode)[-3:],
+                    "hidden": item.name.startswith(".")
+                }
+                
+                # Apply pattern filter if specified
+                if pattern is None or re.search(pattern, item.name, re.IGNORECASE):
+                    items.append(item_info)
+                    
+            except PermissionError:
+                # Skip items we can't access
+                continue
+        
+        # Sort by type then name
+        items.sort(key=lambda x: (x["type"], x["name"].lower()))
+        
+        return {
+            "success": True,
+            "directory": str(dir_path),
+            "items": items,
+            "total_items": len(items),
+            "pattern_filter": pattern
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": ErrorDetail(
+                type=type(e).__name__,
+                message=str(e),
+                suggestions=["Check directory permissions", "Verify path format"]
+            )
+        }
+
+@mcp.tool()
+async def copy_file(src: str, dst: str, preserve_metadata: bool = True) -> FileResult:
+    """Copy file from source to destination."""
+    try:
+        src_path = resolve_path(src)
+        dst_path = resolve_path(dst)
+        
+        if not src_path.exists():
+            return FileResult(
+                success=False,
+                error=ErrorDetail(
+                    type="FileNotFoundError",
+                    message=f"Source file not found: {src}",
+                    suggestions=["Check source file path", "Verify file exists"]
+                )
+            )
+        
+        if not src_path.is_file():
+            return FileResult(
+                success=False,
+                error=ErrorDetail(
+                    type="NotAFileError",
+                    message=f"Source is not a file: {src}",
+                    suggestions=["Use file path, not directory", "Check source type"]
+                )
+            )
+        
+        # Create destination directory if needed
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Copy file
+        if preserve_metadata:
+            shutil.copy2(src_path, dst_path)
+        else:
+            shutil.copy(src_path, dst_path)
+        
+        # Get destination file info
+        stat = dst_path.stat()
+        file_info = {
+            "source": str(src_path),
+            "destination": str(dst_path),
+            "size": stat.st_size,
+            "copied_at": datetime.now().isoformat(),
+            "metadata_preserved": preserve_metadata
+        }
+        
+        return FileResult(
+            success=True,
+            file_info=file_info
+        )
+        
+    except Exception as e:
+        return FileResult(
+            success=False,
+            error=ErrorDetail(
+                type=type(e).__name__,
+                message=str(e),
+                suggestions=["Check file permissions", "Verify destination directory", "Check disk space"]
+            )
+        )
+
+# === Advanced Code Analysis ===
+
+@mcp.tool()
+async def analyze_code(code: str, language: str = "python") -> Dict[str, Any]:
+    """Analyze code for syntax, structure, and dependencies."""
+    try:
+        analysis = {
+            "language": language,
+            "lines_of_code": len(code.splitlines()),
+            "character_count": len(code),
+            "syntax_valid": True,
+            "syntax_errors": [],
+            "imports": [],
+            "functions": [],
+            "classes": [],
+            "dependencies": []
+        }
+        
+        if language.lower() == "python":
+            import ast
+            try:
+                tree = ast.parse(code)
+                
+                # Extract imports
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            analysis["imports"].append(alias.name)
+                            analysis["dependencies"].append(alias.name)
+                    elif isinstance(node, ast.ImportFrom):
+                        if node.module:
+                            analysis["imports"].append(node.module)
+                            analysis["dependencies"].append(node.module)
+                    elif isinstance(node, ast.FunctionDef):
+                        analysis["functions"].append({
+                            "name": node.name,
+                            "line": node.lineno,
+                            "args": len(node.args.args),
+                            "is_async": isinstance(node, ast.AsyncFunctionDef)
+                        })
+                    elif isinstance(node, ast.ClassDef):
+                        analysis["classes"].append({
+                            "name": node.name,
+                            "line": node.lineno,
+                            "methods": len([n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))])
+                        })
+                        
+            except SyntaxError as e:
+                analysis["syntax_valid"] = False
+                analysis["syntax_errors"].append({
+                    "line": e.lineno,
+                    "column": e.offset,
+                    "message": e.msg,
+                    "type": "SyntaxError"
+                })
+        
+        return {
+            "success": True,
+            "analysis": analysis
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": ErrorDetail(
+                type=type(e).__name__,
+                message=str(e),
+                suggestions=["Check code format", "Verify language parameter"]
+            )
+        }
+
+@mcp.tool()
+async def validate_syntax(code: str, language: str = "python") -> Dict[str, Any]:
+    """Validate code syntax and provide error details."""
+    try:
+        if language.lower() == "python":
+            import ast
+            try:
+                ast.parse(code)
+                return {
+                    "success": True,
+                    "valid": True,
+                    "language": language,
+                    "message": "Code syntax is valid"
+                }
+            except SyntaxError as e:
+                return {
+                    "success": True,
+                    "valid": False,
+                    "language": language,
+                    "error": {
+                        "line": e.lineno,
+                        "column": e.offset,
+                        "message": e.msg,
+                        "text": e.text.strip() if e.text else None
+                    },
+                    "suggestions": [
+                        "Check syntax at specified line and column",
+                        "Verify proper indentation",
+                        "Check for missing colons, parentheses, or brackets"
+                    ]
+                }
+        else:
+            return {
+                "success": False,
+                "error": ErrorDetail(
+                    type="UnsupportedLanguageError",
+                    message=f"Syntax validation not supported for language: {language}",
+                    suggestions=["Currently only Python syntax validation is supported"]
+                )
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": ErrorDetail(
+                type=type(e).__name__,
+                message=str(e),
+                suggestions=["Check code format", "Verify language parameter"]
+            )
+        }
+
+# === Environment Management ===
+
+@mcp.tool()
+async def activate_venv(venv_path: str) -> Dict[str, Any]:
+    """Activate virtual environment and return environment info."""
+    try:
+        venv_dir = resolve_path(venv_path)
+        
+        if not venv_dir.exists():
+            return {
+                "success": False,
+                "error": ErrorDetail(
+                    type="VirtualEnvNotFoundError",
+                    message=f"Virtual environment not found: {venv_path}",
+                    suggestions=["Check virtual environment path", "Create virtual environment first"]
+                )
+            }
+        
+        # Check for common venv structures
+        activate_script = None
+        python_executable = None
+        
+        if (venv_dir / "bin" / "activate").exists():  # Unix-like
+            activate_script = venv_dir / "bin" / "activate"
+            python_executable = venv_dir / "bin" / "python"
+        elif (venv_dir / "Scripts" / "activate.bat").exists():  # Windows
+            activate_script = venv_dir / "Scripts" / "activate.bat"
+            python_executable = venv_dir / "Scripts" / "python.exe"
+        
+        if not activate_script:
+            return {
+                "success": False,
+                "error": ErrorDetail(
+                    type="InvalidVirtualEnvError",
+                    message=f"No activation script found in: {venv_path}",
+                    suggestions=["Check if this is a valid virtual environment", "Recreate virtual environment"]
+                )
+            }
+        
+        # Get Python version in venv
+        python_version = "unknown"
+        if python_executable and python_executable.exists():
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    str(python_executable), "--version",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await proc.communicate()
+                python_version = stdout.decode().strip()
+            except:
+                pass
+        
+        return {
+            "success": True,
+            "venv_path": str(venv_dir),
+            "activate_script": str(activate_script),
+            "python_executable": str(python_executable) if python_executable else None,
+            "python_version": python_version,
+            "instructions": f"To activate manually: source {activate_script}" if "bin" in str(activate_script) else f"To activate manually: {activate_script}"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": ErrorDetail(
+                type=type(e).__name__,
+                message=str(e),
+                suggestions=["Check virtual environment path", "Verify permissions"]
+            )
+        }
+
+@mcp.tool()
+async def install_package(package: str, venv_path: Optional[str] = None) -> CommandResult:
+    """Install Python package using pip."""
+    try:
+        # Determine pip executable
+        if venv_path:
+            venv_dir = resolve_path(venv_path)
+            pip_executable = venv_dir / "bin" / "pip"
+            if not pip_executable.exists():
+                pip_executable = venv_dir / "Scripts" / "pip.exe"
+            if not pip_executable.exists():
+                return CommandResult(
+                    success=False,
+                    error="pip not found in virtual environment"
+                )
+            pip_cmd = str(pip_executable)
+        else:
+            pip_cmd = "pip"
+        
+        # Install package
+        command = f"{pip_cmd} install {package}"
+        
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        return CommandResult(
+            success=process.returncode == 0,
+            stdout=stdout.decode('utf-8') if stdout else None,
+            stderr=stderr.decode('utf-8') if stderr else None,
+            return_code=process.returncode
+        )
+        
+    except Exception as e:
+        return CommandResult(
+            success=False,
+            error=str(e)
+        )
 
 # === Terminal Operations Tools ===
 

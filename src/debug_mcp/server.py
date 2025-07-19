@@ -753,8 +753,22 @@ def main():
     parser.add_argument("transport", choices=["stdio", "http"], help="Transport type")
     parser.add_argument("--port", type=int, default=8932, help="HTTP port")
     parser.add_argument("--session-dir", help="Debug session directory")
+    parser.add_argument("--working-dir", help="Set initial working directory for file operations")
     
     args = parser.parse_args()
+    
+    # Set initial working directory if provided
+    if args.working_dir:
+        global current_working_directory
+        try:
+            initial_path = Path(args.working_dir).expanduser().resolve()
+            if initial_path.exists() and initial_path.is_dir():
+                current_working_directory = initial_path
+                print(f"Working directory set to: {current_working_directory}")
+            else:
+                print(f"Warning: Working directory does not exist or is not a directory: {args.working_dir}")
+        except Exception as e:
+            print(f"Warning: Could not set working directory: {e}")
     
     if args.transport == "stdio":
         mcp.run()

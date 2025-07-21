@@ -84,7 +84,20 @@ async def read_file(
     start_line: Optional[int] = None,
     end_line: Optional[int] = None
 ) -> FileResult:
-    """Read file contents, optionally specifying line range."""
+    """Read file contents with optional line range filtering.
+    
+    This tool reads text files from the filesystem with support for tilde expansion
+    and relative paths. Can optionally return specific line ranges for examining
+    large files or focusing on specific sections.
+    
+    Args:
+        path: File path to read - supports ~ expansion and relative paths (e.g., "~/project/file.py", "./src/main.py")
+        start_line: Optional starting line number (1-based, inclusive) to begin reading from
+        end_line: Optional ending line number (1-based, inclusive) to stop reading at
+    
+    Returns:
+        FileResult with success status, content string, lines_read count, and optional error message
+    """
     try:
         file_path = Path(path).expanduser().resolve()
         
@@ -113,7 +126,18 @@ async def read_file(
 
 @mcp.tool()
 async def write_file(path: str, content: str) -> FileResult:
-    """Write content to file, creating directories if needed."""
+    """Write content to a file, automatically creating parent directories if needed.
+    
+    This tool writes text content to a file at the specified path. It will create
+    any missing parent directories in the path automatically.
+    
+    Args:
+        path: File path to write to - supports ~ expansion and relative paths (e.g., "~/project/new_file.py")
+        content: Text content to write to the file
+    
+    Returns:
+        FileResult with success status and optional error message
+    """
     try:
         file_path = Path(path).expanduser().resolve()
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,7 +152,18 @@ async def write_file(path: str, content: str) -> FileResult:
 
 @mcp.tool()
 async def search_file(path: str, pattern: str) -> Dict[str, Any]:
-    """Search for pattern in file, return matching lines with line numbers."""
+    """Search for a regular expression pattern in a file and return matching lines.
+    
+    This tool searches through a file using regular expressions and returns all
+    matching lines with their line numbers and the matched text.
+    
+    Args:
+        path: File path to search in - supports ~ expansion and relative paths
+        pattern: Regular expression pattern to search for (e.g., "class \\w+", "def test_.*", "TODO.*")
+    
+    Returns:
+        Dict with success status, matches array (containing line_number, line, match), and total_matches count
+    """
     try:
         file_path = Path(path).expanduser().resolve()
         
@@ -157,7 +192,19 @@ async def search_file(path: str, pattern: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def edit_file(path: str, old_content: str, new_content: str) -> FileResult:
-    """Edit file by replacing old_content with new_content."""
+    """Edit a file by replacing specific text content with new content.
+    
+    This tool performs text replacement in files by finding exact matches of
+    old_content and replacing with new_content. Useful for making targeted changes.
+    
+    Args:
+        path: File path to edit - supports ~ expansion and relative paths
+        old_content: Exact text content to find and replace (must match exactly including whitespace)
+        new_content: New text content to replace the old content with
+    
+    Returns:
+        FileResult with success status and optional error message if old_content not found
+    """
     try:
         file_path = Path(path).expanduser().resolve()
         
@@ -184,7 +231,18 @@ async def edit_file(path: str, old_content: str, new_content: str) -> FileResult
 
 @mcp.tool()
 async def list_directory(path: str = ".", pattern: Optional[str] = None) -> Dict[str, Any]:
-    """List files and directories with detailed information."""
+    """List files and directories with detailed metadata and optional pattern filtering.
+    
+    This tool provides comprehensive directory listings including file sizes, permissions,
+    modification times, and type classification. Supports regex pattern filtering.
+    
+    Args:
+        path: Directory path to list (defaults to current directory ".") - supports ~ expansion and relative paths
+        pattern: Optional regex pattern to filter items by name (case-insensitive, e.g., "*.py", "test.*")
+    
+    Returns:
+        Dict with success status, directory path, items array (with name/path/type/size/modified/permissions/hidden), total_items count, and pattern_filter used
+    """
     try:
         dir_path = resolve_path(path)
         
@@ -253,7 +311,19 @@ async def list_directory(path: str = ".", pattern: Optional[str] = None) -> Dict
 
 @mcp.tool()
 async def copy_file(src: str, dst: str, preserve_metadata: bool = True) -> FileResult:
-    """Copy file from source to destination."""
+    """Copy a file from source to destination with optional metadata preservation.
+    
+    This tool copies files between locations, automatically creating destination directories
+    if needed. Can preserve or ignore file timestamps and permissions.
+    
+    Args:
+        src: Source file path to copy from - supports ~ expansion and relative paths
+        dst: Destination file path to copy to - supports ~ expansion and relative paths  
+        preserve_metadata: If True, preserves timestamps and permissions; if False, only copies content (default: True)
+    
+    Returns:
+        FileResult with success status, file_info containing source/destination/size/copied_at/metadata_preserved, and optional error
+    """
     try:
         src_path = resolve_path(src)
         dst_path = resolve_path(dst)
@@ -316,7 +386,19 @@ async def copy_file(src: str, dst: str, preserve_metadata: bool = True) -> FileR
 
 @mcp.tool()
 async def analyze_code(code: str, language: str = "python") -> Dict[str, Any]:
-    """Analyze code for syntax, structure, and dependencies."""
+    """Perform comprehensive static analysis of code including syntax, structure, and dependencies.
+    
+    This tool analyzes source code to extract metadata such as imports, functions, classes,
+    syntax validation, and dependency information. Currently supports Python with extensible
+    architecture for other languages.
+    
+    Args:
+        code: Source code text to analyze (can be full file content or code snippets)
+        language: Programming language of the code (currently supports "python", default: "python")
+    
+    Returns:
+        Dict with success status and detailed analysis containing language, lines_of_code, character_count, syntax_valid, syntax_errors, imports, functions, classes, and dependencies arrays
+    """
     try:
         analysis = {
             "language": language,
@@ -385,7 +467,18 @@ async def analyze_code(code: str, language: str = "python") -> Dict[str, Any]:
 
 @mcp.tool()
 async def validate_syntax(code: str, language: str = "python") -> Dict[str, Any]:
-    """Validate code syntax and provide error details."""
+    """Validate source code syntax and provide detailed error information.
+    
+    This tool checks code for syntax errors and provides precise error locations
+    and helpful suggestions for fixing issues. Essential for debugging syntax problems.
+    
+    Args:
+        code: Source code text to validate (can be full file content or code snippets)
+        language: Programming language to validate (currently supports "python", default: "python")
+    
+    Returns:
+        Dict with success status, valid boolean, language, error details (line/column/message/text), and suggestions array for fixing issues
+    """
     try:
         if language.lower() == "python":
             import ast
@@ -438,7 +531,18 @@ async def validate_syntax(code: str, language: str = "python") -> Dict[str, Any]
 
 @mcp.tool()
 async def activate_venv(venv_path: str) -> Dict[str, Any]:
-    """Activate virtual environment and return environment info."""
+    """Analyze and validate a Python virtual environment for activation.
+    
+    This tool examines a virtual environment directory to verify its structure,
+    locate activation scripts, and provide environment information. Note: This analyzes
+    the venv but doesn't actually activate it in the current process.
+    
+    Args:
+        venv_path: Path to the virtual environment directory - supports ~ expansion and relative paths (e.g., "./venv", "~/project/env")
+    
+    Returns:
+        Dict with success status, venv_path, activate_script location, python_executable path, python_version, and manual activation instructions
+    """
     try:
         venv_dir = resolve_path(venv_path)
         
@@ -508,7 +612,18 @@ async def activate_venv(venv_path: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def install_package(package: str, venv_path: Optional[str] = None) -> CommandResult:
-    """Install Python package using pip."""
+    """Install a Python package using pip, optionally within a virtual environment.
+    
+    This tool installs Python packages using pip. If a virtual environment path is provided,
+    it will use the pip from that environment, otherwise uses the system pip.
+    
+    Args:
+        package: Package name to install (e.g., "requests", "pandas==1.5.0", "git+https://github.com/user/repo.git")
+        venv_path: Optional path to virtual environment - if provided, uses venv's pip instead of system pip
+    
+    Returns:
+        CommandResult with success status, stdout/stderr output from pip, and return_code
+    """
     try:
         # Determine pip executable
         if venv_path:
@@ -557,7 +672,19 @@ async def run_command(
     cwd: Optional[str] = None,
     timeout: Optional[int] = 30
 ) -> CommandResult:
-    """Execute shell command and return result."""
+    """Execute a shell command and return its output and exit status.
+    
+    This tool runs shell commands with configurable working directory and timeout.
+    Use with caution as it can execute arbitrary system commands.
+    
+    Args:
+        command: Shell command to execute (e.g., "ls -la", "git status", "python --version")
+        cwd: Optional working directory to run command in - supports ~ expansion and relative paths
+        timeout: Command timeout in seconds (default: 30) - command will be killed if it runs longer
+    
+    Returns:
+        CommandResult with success status, stdout/stderr output, and return_code
+    """
     try:
         work_dir = Path(cwd).expanduser().resolve() if cwd else None
         
@@ -598,7 +725,20 @@ async def run_python(
     venv: Optional[str] = None,
     timeout: Optional[int] = 60
 ) -> CommandResult:
-    """Run Python script, optionally in virtual environment."""
+    """Execute a Python script with optional arguments and virtual environment.
+    
+    This tool runs Python scripts using either the system Python or a virtual environment's
+    Python interpreter. Supports passing command-line arguments to the script.
+    
+    Args:
+        script_path: Path to the Python script file to execute - supports ~ expansion and relative paths
+        args: Optional list of command-line arguments to pass to the script (e.g., ["--verbose", "input.txt"])
+        venv: Optional path to virtual environment - if provided, uses venv's Python interpreter
+        timeout: Script execution timeout in seconds (default: 60) - script will be killed if it runs longer
+    
+    Returns:
+        CommandResult with success status, stdout/stderr output, and return_code from script execution
+    """
     try:
         script_file = Path(script_path).expanduser().resolve()
         
@@ -630,7 +770,18 @@ async def run_python(
 
 @mcp.tool()
 async def setup_debug_session(project_path: str) -> Dict[str, Any]:
-    """Initialize debug session with artifact management."""
+    """Initialize a new debug session with organized artifact storage.
+    
+    This tool creates a structured debug environment within a project directory,
+    setting up organized folders for storing debug artifacts, responses, code samples,
+    analysis results, and logs. Each session gets a unique ID for isolation.
+    
+    Args:
+        project_path: Root path of the project to debug - supports ~ expansion and relative paths (e.g., "~/my_project", "./current_project")
+    
+    Returns:
+        Dict with success status, unique session_id, debug_directory path (debug_artifacts/sessions/{id}), and project_path confirmation
+    """
     try:
         session_id = str(uuid.uuid4())[:8]  # Shorter ID for readability
         project_dir = Path(project_path).expanduser().resolve()
@@ -670,7 +821,17 @@ async def setup_debug_session(project_path: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def get_session_artifacts(session_id: str) -> Dict[str, Any]:
-    """Get artifacts and status for a debug session."""
+    """Retrieve all artifacts and metadata for an active debug session.
+    
+    This tool lists all files and artifacts that have been collected during
+    a debug session, organized by type (responses, code, analysis, logs).
+    
+    Args:
+        session_id: Unique session identifier from setup_debug_session (8-character string)
+    
+    Returns:
+        Dict with success status, complete session metadata, and artifacts dictionary organized by type with file lists
+    """
     try:
         if session_id not in active_sessions:
             return {"success": False, "error": f"Session {session_id} not found"}
@@ -701,7 +862,18 @@ async def get_session_artifacts(session_id: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def extract_selectors(code: str) -> SelectorAnalysis:
-    """Extract CSS and XPath selectors from Python code."""
+    """Extract and categorize CSS selectors, XPath expressions, and Playwright selectors from Python code.
+    
+    This specialized tool analyzes Python code (particularly web automation and testing code)
+    to identify and categorize different types of selectors used for web element identification.
+    Useful for debugging selector issues or analyzing automation test code.
+    
+    Args:
+        code: Python source code to analyze for selectors (typically web automation or testing code)
+    
+    Returns:
+        SelectorAnalysis with selectors array (all unique selectors found), selector_types dict (categorized by css/xpath/playwright), and analysis summary string
+    """
     try:
         selectors = []
         selector_types = {"css": [], "xpath": [], "playwright": []}
